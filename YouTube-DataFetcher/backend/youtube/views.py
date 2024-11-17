@@ -38,6 +38,9 @@ from googleapiclient.discovery import build
 
 from .utils import extract_video_id
 
+import os
+from dotenv import load_dotenv
+
 # register user
 class UserRegisterView(APIView):
     """To Register the User"""
@@ -261,7 +264,11 @@ class DeleteUserAddressView(APIView):
 
 
 
-API_KEY = 'AIzaSyADB7U5e-kjykuAsXsMX9A2QEvgu1bGj2w'
+# Load environment variables from .env file
+load_dotenv()
+
+# Fetch the API Key from the environment variables
+API_KEY = os.getenv('API_KEY')
 
 
 
@@ -351,7 +358,6 @@ class FetchDataView(APIView):
                         reply_id = reply_item['id']
                         reply_author = reply_data['authorDisplayName']
                         reply_text = reply_data['textDisplay']
-                        reply_published_at = reply_data['publishedAt']
 
                         # Create the Reply object
                         Reply.objects.create(
@@ -359,7 +365,6 @@ class FetchDataView(APIView):
                             reply_id=reply_id,
                             author=reply_author,
                             text=reply_text,
-                            published_at=reply_published_at
                         )
                         print(f'Reply by {reply_author} saved')
 
