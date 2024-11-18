@@ -1,26 +1,29 @@
-"""my_project URL Configuration
+from django.urls import path
+from youtube import views
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/3.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-from django.contrib import admin
-from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('youtube/', include('youtube.urls')),
-] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # user
+    path('register/', views.UserRegisterView.as_view(), name="register-page"),
+    path('login/', views.MyTokenObtainPairView.as_view(), name="login-page"),
+    path('user/<int:pk>/', views.UserAccountDetailsView.as_view(), name="user-details"),
+    path('comments/', views.fetch_data_videos, name="comments"),
+    path('user_update/<int:pk>/', views.UserAccountUpdateView.as_view(), name="user-update"),
+    path('user_delete/<int:pk>/', views.UserAccountDeleteView.as_view(), name="user-delete"),
+    
+    path('fetch-data/', views.FetchDataView.as_view(), name='fetch-data'),
+    # path('export-excel/', views.ExportExcelView.as_view(), name='export-excel'),
+    path('export-comments/', views.export_to_excel, name='export_comments'),
+
+    # user address
+    path('all-address-details/', views.UserAddressesListView.as_view(), name="all-address-details"),
+    path('address-details/<int:pk>/', views.UserAddressDetailsView.as_view(), name="address-details"),
+    path('create-address/', views.CreateUserAddressView.as_view(), name="create-address"),
+    path('update-address/<int:pk>/', views.UpdateUserAddressView.as_view(), name="update-address-details"),
+    path('delete-address/<int:pk>/', views.DeleteUserAddressView.as_view(), name="delete-address"),
+    
+    
+
+    ]

@@ -2,8 +2,6 @@ from django.http import Http404
 from rest_framework import status
 from rest_framework.views import APIView
 from django.contrib.auth.models import User
-from rest_framework.response import Response
-from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password
 from rest_framework import authentication, permissions
 from rest_framework.decorators import permission_classes
@@ -17,8 +15,7 @@ from .serializers import (
 
 )
 import openpyxl
-from openpyxl.styles import Font
-from rest_framework.views import APIView
+from openpyxl.styles import Font, Alignment, Border, Side
 from rest_framework.response import Response
 from .models import Video, Comment, Reply
 from googleapiclient.discovery import build
@@ -26,20 +23,20 @@ import pandas as pd
 import datetime
 from io import BytesIO
 from django.http import HttpResponse
+from django.http import JsonResponse
+from django.db.models import Prefetch
+
+from django.core.serializers import serialize
 import os
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-
 import google.auth  
 from googleapiclient.discovery import build  
-
-from .utils import extract_video_id
-
-import os
 from dotenv import load_dotenv
+from .utils import extract_video_id
 
 # register user
 class UserRegisterView(APIView):
@@ -259,33 +256,44 @@ class DeleteUserAddressView(APIView):
 
 
 
-
-
-
-
-
 # Load environment variables from .env file
 load_dotenv()
 
 # Fetch the API Key from the environment variables
 API_KEY = os.getenv('API_KEY')
+# for fecth the data from database
 
+def fetch_data_videos(request):
+    try:
+        # Fetch videos and related comments
+        videos = Video.objects.prefetch_related('comments').all()  # Adjust 'comments' to match your related name
+        print('videos fetch amkit ==<<<>>>', videos)
+        response_data = []
+        for video in videos:
+            video_data = {
+                'video_id': video.video_id,
+                'title': video.title,
+                'description': video.description,
+                'view_count': video.view_count,
+                'like_count': video.like_count,
+                'comment_count': video.comment_count,
+                'comments': [
+                    {
+                        'comment_id': comment.id,  # Assuming the Comment model has 'id' as primary key
+                        'text': comment.text,
+                        'published_date': comment.published_date.strftime('%Y-%m-%d %H:%M:%S') if comment.published_date else None
+                    }
+                    for comment in video.comments.all()  # Fetch related comments
+                ]
+            }
+            response_data.append(video_data)
+        
+        print('response_data ===<<>>>', response_data)
+        return JsonResponse(response_data, safe=False)
 
-
-
-
-
-
-
-
-
-
-
-
-def get_comments(request):
-    comments = Comment.objects.all().values()
-    print('comments ===<<<>>>', comments)
-    return JsonResponse(list(comments), safe=False)
+    except Exception as e:
+        print(f"Error in get_comments: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 #  insert comment and replay into database 
@@ -293,137 +301,211 @@ class FetchDataView(APIView):
     def post(self, request):
         # Get the channel URL
         channel_url = request.data.get('channel_url')
-        print('channel_url ==<<<>>>>', channel_url)
+        print(f"Received channel URL: {channel_url}")
 
         if not channel_url:
+            print("Error: Channel URL is missing.")
             return Response({'error': 'Channel URL is required.'}, status=400)
 
-        comments_and_replies = []
-
         try:
-            # Extract video ID from the channel URL
+            # Extract video ID from the channel URL (assuming extract_video_id is implemented)
             video_id = extract_video_id(channel_url)
-            print('video_id ===<<>>>', video_id)
+            print(f"Extracted video ID: {video_id}")
 
             if not video_id:
+                print("Error: Invalid YouTube URL. Could not extract video ID.")
                 return Response({'error': 'Invalid YouTube URL.'}, status=400)
 
             # Initialize YouTube API client
             youtube = build('youtube', 'v3', developerKey=API_KEY)
-            print('YouTube client initialized')
+            print("YouTube API client initialized.")
 
-            # Retrieve video details (e.g., title) from the video ID
+            # Retrieve video details (title, description, etc.)
             video_response = youtube.videos().list(
-                part='snippet',
+                part='snippet,statistics',
                 id=video_id
             ).execute()
+            print(f"Video details retrieved: {video_response}")
 
             if not video_response['items']:
+                print(f"Error: Video not found for video ID {video_id}.")
                 return Response({'error': 'Video not found.'}, status=404)
 
-            # Get video title and description (if available)
-            video_title = video_response['items'][0]['snippet']['title']
+            # Get video details
+            video_snippet = video_response['items'][0]['snippet']
+            video_statistics = video_response['items'][0].get('statistics', {})
 
-            # Create or get the Video object in the database
+            video_title = video_snippet['title']
+            video_description = video_snippet.get('description', '')
+            video_published_at = video_snippet['publishedAt']
+            video_view_count = video_statistics.get('viewCount', 0)
+            video_like_count = video_statistics.get('likeCount', 0)
+            video_comment_count = video_statistics.get('commentCount', 0)
+
+            # Create or get the Video object
             video, created = Video.objects.get_or_create(
                 video_id=video_id,
-                defaults={'title': video_title}
+                defaults={
+                    'title': video_title,
+                    'description': video_description,
+                    'published_date': video_published_at,
+                    'view_count': video_view_count,
+                    'like_count': video_like_count,
+                    'comment_count': video_comment_count,
+                }
             )
-            print(f'Video: {video.title} (ID: {video.video_id})')
+            if created:
+                print(f"New video record created: {video.title} (ID: {video.video_id})")
+            else:
+                print(f"Video already exists in the database: {video.title} (ID: {video.video_id})")
 
-            # Retrieve video comments (limit to 10)
-            video_response = youtube.commentThreads().list(
+            # Retrieve video comments (latest 10 for debugging; later expand to 100 if needed)
+            comment_threads_response = youtube.commentThreads().list(
                 part='snippet,replies',
                 videoId=video_id,
-                maxResults=10  # Limit to 10 comments
+                maxResults=10  # Limit to 10 comments for debugging
             ).execute()
+            print(f"Comments retrieved for video ID {video_id}: {len(comment_threads_response.get('items', []))} items.")
 
             # Iterate through the comments and store them
-            for item in video_response['items']:
-                comment_data = item['snippet']['topLevelComment']['snippet']
+            for idx, item in enumerate(comment_threads_response.get('items', []), start=1):
+                comment_snippet = item['snippet']['topLevelComment']['snippet']
                 comment_id = item['id']
-                text = comment_data['textDisplay']
+                comment_text = comment_snippet['textDisplay']
+                comment_author = comment_snippet['authorDisplayName']
+                comment_published_at = comment_snippet['publishedAt']
+                comment_like_count = comment_snippet.get('likeCount', 0)
 
                 # Create the Comment object
-                comment = Comment.objects.create(
-                    video=video,
-                    comment_id=comment_id,
-                    text=text                )
-                print(f'Comment  {text} saved')
+                comment, created = Comment.objects.get_or_create(
+                video=video,
+                comment_id=comment_id,
+                defaults={
+                    'text': comment_text,
+                    'author_name': comment_author,
+                    'published_date': comment_published_at,
+                    'like_count': comment_like_count,
+                }
+                )
+                
+                if created:
+                    print(f"Saved comment {idx}: {comment_text[:30]} (likes: {comment_like_count})")
+                else:
+                    print(f"Comment {idx} already exists in the database: {comment_text[:30]}")
 
-                # If there are replies to this comment, store them as well
+                # If there are replies, store them
                 if 'replies' in item:
-                    for reply_item in item['replies']['comments']:
-                        reply_data = reply_item['snippet']
+                    for reply_idx, reply_item in enumerate(item['replies'].get('comments', []), start=1):
+                        reply_snippet = reply_item['snippet']
                         reply_id = reply_item['id']
-                        reply_author = reply_data['authorDisplayName']
-                        reply_text = reply_data['textDisplay']
+                        reply_text = reply_snippet['textDisplay']
+                        reply_author = reply_snippet['authorDisplayName']
+                        reply_published_at = reply_snippet['publishedAt']
+                        reply_like_count = reply_snippet.get('likeCount', 0)
 
                         # Create the Reply object
-                        Reply.objects.create(
+                        reply, created = Reply.objects.get_or_create(
                             comment=comment,
                             reply_id=reply_id,
-                            author=reply_author,
-                            text=reply_text,
+                            defaults={
+                                'text': reply_text,
+                                'author': reply_author,
+                                'published_date': reply_published_at,
+                                'like_count': reply_like_count,
+                            }
                         )
-                        print(f'Reply by {reply_author} saved')
+                        if created:
+                            print(f"Saved reply {reply_idx} to comment {idx}: {reply_text[:30]} (likes: {reply_like_count})")
+                        else:
+                            print(f"Reply {reply_idx} to comment {idx} already exists in the database.")
 
+            print("Data fetching and saving completed successfully.")
             return Response({'message': 'Data is inserted successfully.'})
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error encountered: {e}")
             return Response({'error': str(e)}, status=500)
 
 
 
-
-
-
-
-
-
-def export_comments_to_excel(request):
+#  download excel sheet 
+def export_to_excel(request):
     try:
-        # Fetch all comments from the database
-        comments = Comment.objects.all().values('id', 'video_id', 'comment_id', 'text')
-        print('comments for download excel ===<<<>>>', comments)
+        # Fetch video and comment data
+        videos = Video.objects.all().values()
+        comments = Comment.objects.all().values()
 
-        if not comments:
-            return HttpResponse("No comments available to export.", status=404)
-
-        # Create a workbook and worksheet
+        # Create an Excel workbook
         wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Comments"
 
-        # Add headers to the worksheet
-        headers = ['ID', 'Vidoe Id','Comment ID', 'Comment Text']
-        print('headers ===<<<>>>>', headers)
-        for col_num, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_num, value=header)
-            cell.font = Font(bold=True)
+        # Helper function to adjust formatting
+        def format_sheet(ws, headers, data_start_row):
+            # Adjust column widths
+            for col_num, header in enumerate(headers, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = max(len(header) + 5, 15)
+            
+            # Add borders to all cells with data
+            thin_border = Border(left=Side(style='thin'), 
+                                 right=Side(style='thin'), 
+                                 top=Side(style='thin'), 
+                                 bottom=Side(style='thin'))
 
-        print('headers ===<<<>>>>', headers)
-        # Write data to the worksheet
-        for row_num, comment in enumerate(comments, start=2):
-            ws.cell(row=row_num, column=1, value=comment['id'])
-            ws.cell(row=row_num, column=2, value=comment['video_id'])
-            ws.cell(row=row_num, column=3, value=comment['comment_id'])
-            ws.cell(row=row_num, column=4, value=comment['text'])
+            for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=len(headers)):
+                for cell in row:
+                    cell.border = thin_border
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # Save the workbook to an in-memory buffer
-        output = BytesIO()
-        print('output ===<<<<>>>', output)
-        wb.save(output)
-        output.seek(0)  # Move the cursor to the beginning of the buffer
+        # Sheet 1: Video Details
+        ws_videos = wb.active
+        ws_videos.title = "Videos"
 
-        # Create HTTP response for the Excel file
-        response = HttpResponse(
-            output,
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = 'attachment; filename="comments.xlsx"'
+        video_headers = ["ID", "Video ID", "Title", "Description", "Published Date", "View Count", "Like Count", "Comment Count"]
+        for col_num, header in enumerate(video_headers, 1):
+            cell = ws_videos.cell(row=1, column=col_num)
+            cell.value = header
+            cell.font = Font(bold=True, size=12)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for row_num, video in enumerate(videos, 2):
+            ws_videos.cell(row=row_num, column=1).value = video.get('id')
+            ws_videos.cell(row=row_num, column=2).value = video.get('video_id')
+            ws_videos.cell(row=row_num, column=3).value = video.get('title')
+            ws_videos.cell(row=row_num, column=4).value = video.get('description')
+            ws_videos.cell(row=row_num, column=5).value = video.get('published_date').strftime('%Y-%m-%d %H:%M:%S') if video.get('published_date') else None
+            ws_videos.cell(row=row_num, column=6).value = video.get('view_count')
+            ws_videos.cell(row=row_num, column=7).value = video.get('like_count')
+            ws_videos.cell(row=row_num, column=8).value = video.get('comment_count')
+
+        format_sheet(ws_videos, video_headers, data_start_row=2)
+
+        # Sheet 2: Comments
+        ws_comments = wb.create_sheet(title="Comments")
+
+        comment_headers = ["ID", "Video ID", "User", "Comment Text", "Publish Date"]
+        for col_num, header in enumerate(comment_headers, 1):
+            cell = ws_comments.cell(row=1, column=col_num)
+            cell.value = header
+            cell.font = Font(bold=True, size=12)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for row_num, comment in enumerate(comments, 2):
+            ws_comments.cell(row=row_num, column=1).value = comment.get('id')
+            ws_comments.cell(row=row_num, column=2).value = comment.get('video_id')
+            ws_comments.cell(row=row_num, column=4).value = comment.get('author_name')
+            ws_comments.cell(row=row_num, column=4).value = comment.get('text')
+            ws_comments.cell(row=row_num, column=5).value = comment.get('published_date').strftime('%Y-%m-%d %H:%M:%S') if comment.get('posted_date') else None
+
+        format_sheet(ws_comments, comment_headers, data_start_row=2)
+
+        # Prepare the HTTP response
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename="videos_and_comments.xlsx"'
+
+        # Save the workbook to the response
+        wb.save(response)
         return response
 
     except Exception as e:
-        return HttpResponse(f"Error: {str(e)}", status=500)
+        print("Error exporting data to Excel:", str(e))
+        return HttpResponse("Internal Server Error", status=500)
+
