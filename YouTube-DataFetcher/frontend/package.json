@@ -7,13 +7,13 @@
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
     "@mui/icons-material": "^6.1.7",
-    "@mui/styled-engine": "^6.1.7",
+    "@mui/material": "^6.1.7",
     "@stripe/react-stripe-js": "^1.4.1",
     "@stripe/stripe-js": "^1.15.0",
     "@testing-library/jest-dom": "^5.11.4",
     "@testing-library/react": "^11.1.0",
     "@testing-library/user-event": "^12.1.10",
-    "axios": "^0.21.1",
+    "axios": "^0.21.4",
     "react": "^17.0.2",
     "react-bootstrap": "^1.6.1",
     "react-dom": "^17.0.2",
@@ -48,4 +48,8 @@
     ],
     "development": [
       "last 1 chrome version",
-      "l
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

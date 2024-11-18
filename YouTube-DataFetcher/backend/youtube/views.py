@@ -35,7 +35,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import google.auth  
 from googleapiclient.discovery import build  
-from dotenv import load_dotenv
+
 from .utils import extract_video_id
 
 # register user
@@ -256,11 +256,9 @@ class DeleteUserAddressView(APIView):
 
 
 
-# Load environment variables from .env file
-load_dotenv()
+API_KEY = 'AIzaSyADB7U5e-kjykuAsXsMX9A2QEvgu1bGj2w'
 
-# Fetch the API Key from the environment variables
-API_KEY = os.getenv('API_KEY')
+
 # for fecth the data from database
 
 def fetch_data_videos(request):

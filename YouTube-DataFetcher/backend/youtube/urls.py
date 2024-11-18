@@ -1,6 +1,5 @@
 from django.urls import path
 from youtube import views
-from .views import get_comments
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 
@@ -10,13 +9,13 @@ urlpatterns = [
     path('register/', views.UserRegisterView.as_view(), name="register-page"),
     path('login/', views.MyTokenObtainPairView.as_view(), name="login-page"),
     path('user/<int:pk>/', views.UserAccountDetailsView.as_view(), name="user-details"),
-    path('comments/', get_comments, name="comments"),
+    path('comments/', views.fetch_data_videos, name="comments"),
     path('user_update/<int:pk>/', views.UserAccountUpdateView.as_view(), name="user-update"),
     path('user_delete/<int:pk>/', views.UserAccountDeleteView.as_view(), name="user-delete"),
     
     path('fetch-data/', views.FetchDataView.as_view(), name='fetch-data'),
     # path('export-excel/', views.ExportExcelView.as_view(), name='export-excel'),
-    path('export-comments/', views.export_comments_to_excel, name='export_comments'),
+    path('export-comments/', views.export_to_excel, name='export_comments'),
 
     # user address
     path('all-address-details/', views.UserAddressesListView.as_view(), name="all-address-details"),
