@@ -38,6 +38,13 @@ from googleapiclient.discovery import build
 
 from .utils import extract_video_id
 
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
+
+# Fetch the API Key from the environment variables
+API_KEY = os.getenv('API_KEY')
+
 # register user
 class UserRegisterView(APIView):
     """To Register the User"""
@@ -254,9 +261,6 @@ class DeleteUserAddressView(APIView):
             return Response({"details": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-
-
-API_KEY = 'AIzaSyADB7U5e-kjykuAsXsMX9A2QEvgu1bGj2w'
 
 
 # for fecth the data from database
